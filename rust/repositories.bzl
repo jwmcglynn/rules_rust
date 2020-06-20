@@ -5,7 +5,7 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 DEFAULT_TOOLCHAIN_NAME_PREFIX = "toolchain_for"
 
-def rust_repositories(version = "1.39.0", iso_date = None, rustfmt_version = "1.4.8"):
+def rust_repositories(version = "1.39.0", iso_date = None, rustfmt_version = "1.4.8", cargo_version = None):
     """Emits a default set of toolchains for Linux, OSX, and Freebsd
 
     Skip this macro and call the `rust_repository_set` macros directly if you need a compiler for
@@ -15,6 +15,7 @@ def rust_repositories(version = "1.39.0", iso_date = None, rustfmt_version = "1.
       version: The version of Rust. Either "nightly", "beta", or an exact version.
       rustfmt_version: The version of rustfmt. Either "nightly", "beta", or an exact version.
       iso_date: The date of the nightly or beta release (or None, if the version is a specific version).
+      cargo_version: The version of cargo to download (or None to not download it).
     """
 
     maybe(
@@ -33,6 +34,7 @@ def rust_repositories(version = "1.39.0", iso_date = None, rustfmt_version = "1.
         version = version,
         iso_date = iso_date,
         rustfmt_version = rustfmt_version,
+        cargo_version = cargo_version,
     )
 
     rust_repository_set(
@@ -42,6 +44,7 @@ def rust_repositories(version = "1.39.0", iso_date = None, rustfmt_version = "1.
         version = version,
         iso_date = iso_date,
         rustfmt_version = rustfmt_version,
+        cargo_version = cargo_version,
     )
 
     rust_repository_set(
@@ -51,6 +54,7 @@ def rust_repositories(version = "1.39.0", iso_date = None, rustfmt_version = "1.
         version = version,
         iso_date = iso_date,
         rustfmt_version = rustfmt_version,
+        cargo_version = cargo_version,
     )
 
 def _check_version_valid(version, iso_date, param_prefix = ""):
@@ -102,6 +106,7 @@ filegroup(
     srcs = ["bin/rustdoc{binary_ext}"],
     visibility = ["//visibility:public"],
 )
+
 """.format(
         binary_ext = system_to_binary_ext(system),
         staticlib_ext = system_to_staticlib_ext(system),
@@ -159,6 +164,20 @@ filegroup(
         target_triple = target_triple,
     )
 
+def BUILD_for_cargo(target_triple):
+    """Emits a BUILD file the cargo .tar.gz."""
+
+    system = triple_to_system(target_triple)
+    return """
+filegroup(
+    name = "cargo",
+    srcs = ["bin/cargo{binary_ext}"],
+    visibility = ["//visibility:public"],
+)
+""".format(
+        binary_ext = system_to_binary_ext(system),
+    )
+
 def BUILD_for_rust_toolchain(workspace_name, name, exec_triple, target_triple, default_edition = "2015"):
     """Emits a toolchain declaration to match an existing compiler and stdlib.
 
@@ -179,6 +198,7 @@ rust_toolchain(
     rustc = "@{workspace_name}//:rustc",
     rustfmt = "@{workspace_name}//:rustfmt_bin",
     rustc_lib = "@{workspace_name}//:rustc_lib",
+    cargo = "@{workspace_name}//:cargo",
     staticlib_ext = "{staticlib_ext}",
     dylib_ext = "{dylib_ext}",
     os = "{system}",
@@ -354,6 +374,22 @@ def _load_rust_stdlib(ctx, target_triple):
 
     return stdlib_BUILD + toolchain_BUILD
 
+def _load_cargo(ctx):
+    target_triple = ctx.attr.exec_triple
+
+    target_triple = ctx.attr.exec_triple
+    load_arbitrary_tool(
+        ctx,
+        iso_date = ctx.attr.iso_date,
+        param_prefix = "cargo_",
+        target_triple = target_triple,
+        tool_name = "cargo",
+        tool_subdirectory = "cargo",
+        version = ctx.attr.cargo_version,
+    )
+
+    return BUILD_for_cargo(target_triple)
+
 def _rust_toolchain_repository_impl(ctx):
     """The implementation of the rust toolchain repository rule."""
 
@@ -363,6 +399,9 @@ def _rust_toolchain_repository_impl(ctx):
 
     if ctx.attr.rustfmt_version:
         BUILD_components.append(_load_rustfmt(ctx))
+
+    if ctx.attr.cargo_version:
+        BUILD_components.append(_load_cargo(ctx))
 
     for target_triple in [ctx.attr.exec_triple] + ctx.attr.extra_target_triples:
         BUILD_components.append(_load_rust_stdlib(ctx, target_triple))
@@ -397,6 +436,7 @@ Args:
   name: A unique name for this rule
   version: The version of the tool among "nightly", "beta', or an exact version.
   rustfmt_version: The version of rustfmt to be associated with the toolchain.
+  cargo_version: The version of cargo to download, if set.
   iso_date: The date of the tool (or None, if the version is a specific version).
   exec_triple: The Rust-style target triple for the compilation platform
   extra_target_triples: The Rust-style triples for extra compilation targets
@@ -408,6 +448,7 @@ rust_toolchain_repository = repository_rule(
     attrs = {
         "version": attr.string(mandatory = True),
         "rustfmt_version": attr.string(),
+        "cargo_version": attr.string(),
         "iso_date": attr.string(),
         "exec_triple": attr.string(mandatory = True),
         "extra_target_triples": attr.string_list(),
@@ -446,6 +487,7 @@ def rust_repository_set(
         extra_target_triples = [],
         iso_date = None,
         rustfmt_version = None,
+        cargo_version = False,
         edition = None):
     """Assembles a remote repository for the given toolchain params, produces a proxy repository
     to contain the toolchain declaration, and registers the toolchains.
@@ -461,6 +503,7 @@ def rust_repository_set(
       extra_target_triples: Additional rust-style targets that this set of toolchains
                             should support.
       rustfmt_version: The version of rustfmt to be associated with the toolchain.
+      cargo_version: The version of cargo to download, if set.
       edition: The rust edition to be used by default (2015 (default) or 2018)
     """
 
@@ -472,6 +515,7 @@ def rust_repository_set(
         toolchain_name_prefix = DEFAULT_TOOLCHAIN_NAME_PREFIX,
         version = version,
         rustfmt_version = rustfmt_version,
+        cargo_version = cargo_version,
         edition = edition,
     )
 

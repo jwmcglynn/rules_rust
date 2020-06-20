@@ -18,6 +18,7 @@ def _rust_toolchain_impl(ctx):
         rustfmt = ctx.file.rustfmt,
         rustc_lib = ctx.attr.rustc_lib,
         rust_lib = ctx.attr.rust_lib,
+        cargo = ctx.file.cargo,
         staticlib_ext = ctx.attr.staticlib_ext,
         dylib_ext = ctx.attr.dylib_ext,
         target_triple = ctx.attr.target_triple,
@@ -28,6 +29,7 @@ def _rust_toolchain_impl(ctx):
         compilation_mode_opts = compilation_mode_opts,
         crosstool_files = ctx.files._crosstool,
     )
+    variables = platform_common.TemplateVariableInfo({'CARGO': toolchain.cargo.path})
     return [toolchain]
 
 rust_toolchain = rule(
@@ -50,6 +52,10 @@ rust_toolchain = rule(
         ),
         "rust_lib": attr.label(
             doc = "The rust standard library.",
+        ),
+        "cargo": attr.label(
+            doc = "The location of the `cargo` binary. Can be a direct source or a filegroup containing one item.",
+            allow_single_file = True,
         ),
         "staticlib_ext": attr.string(mandatory = True),
         "dylib_ext": attr.string(mandatory = True),
